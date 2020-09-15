@@ -1,5 +1,5 @@
 import { parse } from "https://deno.land/std/flags/mod.ts";
-import { ChunkedFile, FileChunk } from "../ChunkedFile/mod.ts";
+import { ChunkedFile, FileChunk } from "../src/ChunkedFile/mod.ts";
 
 function buf2hex(arr: Uint8Array): string {
   let ret = new Array<string>();
