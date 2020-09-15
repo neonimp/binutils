@@ -52,32 +52,64 @@ export class ChunkedFile implements Iterator<FileChunk> {
     this.file.seekSync(this.posInFile, Deno.SeekMode.Start);
   }
 
-  private readNext(): number | null {
+  private readChunk(): number | null {
+    // Read the file by a chunk's lenght
     let ret = Deno.readSync(this.file.rid, this.buff);
-    let nPos = this.readCount * this.buffSize;
+    this.posInFile = this.readCount * this.buffSize;
+    /* if the read size is smaller than the buffer size slice the buffer to the read size
+       this is due to the fact that the buffer if read less than it's size will remain with garbage in the end
+       so this will snip the buffer to whatever size is read.
+     */
     if ((ret || 0) < this.buffSize) {
       this.buff = this.buff.slice(0, ret || 0);
     }
-    this.posInFile = nPos;
     this.readCount++;
     return ret;
+  }
+
+  /**
+   * Read the file at the specified buffer multiple or
+   * @param pos offset in multiples of buffer size this is preferred over offset must be < than lenght
+   * @param offset offset in bytes
+   * @param seekFrom Deno.SeekMode to use defaults to Start
+   */
+  private _readAt(
+    pos?: number,
+    offset?: number,
+    seekFrom: Deno.SeekMode = Deno.SeekMode.Start,
+  ): number | null {
+    if (pos && pos < this.lenght) {
+      this.file.seekSync(pos * this.buffSize, seekFrom);
+    } else if (offset) {
+      this.file.seekSync(offset, seekFrom);
+    } else {
+      throw Error("need either `pos` or `offset`");
+    }
+    return this.readChunk();
   }
 
   public set offset(at: number) {
     this.file.seekSync(at, Deno.SeekMode.Current);
   }
 
-  public get offset() {
+  public get offset(): number {
     return this.posInFile;
   }
 
-  public get remainingBytes() {
+  public get remainingBytes(): number {
     return this.fileSize - this.posInFile;
   }
 
+  /**
+   * @returns returns buffSize/fileSize
+   */
+  public get lenght(): number {
+    return Math.floor(this.fileSize / this.buffSize);
+  }
+
   public next(): IteratorResult<FileChunk> {
-    let ret = this.readNext();
-    let data = Uint8Array.from(this.buff)
+    let ret = this.readChunk();
+    let data = Uint8Array.from(this.buff);
     if (ret === null) {
       return {
         done: true,
@@ -88,6 +120,15 @@ export class ChunkedFile implements Iterator<FileChunk> {
       done: false,
       value: new FileChunk(data, data.length),
     };
+  }
+
+  public readAt(index: number): FileChunk {
+    if (this._readAt(index) !== null) {
+      let data = Uint8Array.from(this.buff);
+      return new FileChunk(data, data.length);
+    } else {
+      throw Error("read error");
+    }
   }
 
   public forEach(fun: CallableFunction) {
